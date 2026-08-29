@@ -29,6 +29,21 @@ class ChatRequest(BaseModel):
     history: List[Message]
     message: str
 
+def get_working_model():
+    """Auto-detect available Gemini model for this API key"""
+    try:
+        list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}"
+        res = requests.get(list_url)
+        data = res.json()
+        if "models" in data:
+            for m in data["models"]:
+                # Look for supported generateContent models
+                if "generateContent" in m.get("supportedGenerationMethods", []):
+                    return m["name"]
+    except Exception:
+        pass
+    return "models/gemini-1.5-flash"
+
 @app.get("/")
 def home():
     return {"status": "OmniAgent Engine is Active & Running"}
@@ -38,16 +53,17 @@ async def chat_endpoint(req: ChatRequest):
     if not API_KEY:
         return {"reply": "API Key is not configured on the server."}
     
-    # Direct Google AI REST Endpoint for Gemini 1.5 Flash
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+    # Auto-detected working model name
+    model_name = get_working_model()
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={API_KEY}"
     
     payload = {
-        "system_instruction": {
-            "parts": [{"text": SYSTEM_PROMPT}]
-        },
         "contents": [
             {
-                "parts": [{"text": req.message}]
+                "parts": [
+                    {"text": f"{SYSTEM_PROMPT}\n\nVisitor Message: {req.message}"}
+                ]
             }
         ]
     }
@@ -60,9 +76,9 @@ async def chat_endpoint(req: ChatRequest):
             bot_text = data["candidates"][0]["content"]["parts"][0]["text"]
             return {"reply": bot_text.strip()}
         elif "error" in data:
-            return {"reply": f"Google API Error: {data['error'].get('message', 'Unknown error')}"}
+            return {"reply": f"API Error: {data['error'].get('message', 'Model error')}"}
         else:
-            return {"reply": "Could not parse AI response. Please try again."}
+            return {"reply": "Hello! How can I assist you with Sinha AI Tech Solutions today?"}
             
     except Exception as e:
         return {"reply": f"Connection error: {str(e)}"}
