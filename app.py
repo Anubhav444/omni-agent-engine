@@ -17,9 +17,9 @@ app.add_middleware(
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 
-SYSTEM_PROMPT = """You are OmniAgent, the official AI business representative for Sinha AI Tech Solutions.
-Our Core Services: Custom AI Chatbots & Agents, Automated Recruitment Systems, and Business Process Automation.
-Guidelines: Answer visitor queries professionally and concisely (under 3 sentences) and prompt them for their Name and Email/Phone to schedule a free consultation."""
+SYSTEM_PROMPT = """You are OmniAgent, the AI business representative for Sinha AI Tech Solutions.
+Core Services: Custom AI Chatbots, Automated Recruitment Systems, and Business Process Automation.
+Goal: Answer visitor queries professionally and concisely (under 3 sentences) and prompt them for their Name and Email to schedule a consultation."""
 
 class Message(BaseModel):
     role: str
@@ -38,30 +38,30 @@ async def chat_endpoint(req: ChatRequest):
     if not API_KEY:
         return {"reply": "API Key is not configured on the server."}
     
-    # Official updated endpoint
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={API_KEY}"
+    # List of stable fallback models in priority order
+    candidate_models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-pro"]
     
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": f"{SYSTEM_PROMPT}\n\nVisitor: {req.message}"}
-                ]
-            }
-        ]
-    }
-    
-    try:
-        res = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
-        data = res.json()
+    for model_name in candidate_models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={API_KEY}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [{"text": f"{SYSTEM_PROMPT}\n\nVisitor: {req.message}"}]
+                }
+            ]
+        }
         
-        if "candidates" in data and len(data["candidates"]) > 0:
-            bot_text = data["candidates"][0]["content"]["parts"][0]["text"]
-            return {"reply": bot_text.strip()}
-        elif "error" in data:
-            return {"reply": f"API Error: {data['error'].get('message', 'Model error')}"}
-        else:
-            return {"reply": "Hello! How can I assist you with Sinha AI Tech Solutions today?"}
+        try:
+            res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+            data = res.json()
             
-    except Exception as e:
-        return {"reply": f"Connection error: {str(e)}"}
+            if "candidates" in data and len(data["candidates"]) > 0:
+                bot_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                return {"reply": bot_text.strip()}
+            elif "error" in data:
+                # If model is deprecated/unavailable, try next model in candidate_models
+                continue
+        except Exception:
+            continue
+
+    return {"reply": "Hello! Welcome to Sinha AI Tech Solutions. How can we help automate your business today? Please share your name and email to connect with us."}
