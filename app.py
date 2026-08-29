@@ -15,14 +15,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure Gemini
+# Configure API Key
 API_KEY = os.getenv("GEMINI_API_KEY")
 if API_KEY:
     genai.configure(api_key=API_KEY)
 
 SYSTEM_PROMPT = """You are OmniAgent, the official AI representative for Sinha AI Tech Solutions.
 We provide: Custom AI Agents, Automated Recruitment Systems, and Business Process Automation.
-Goal: Answer the user's question politely and concisely (under 3 sentences) and ask for their name and email to get started."""
+Goal: Answer the user politely and concisely (under 3 sentences) and ask for their name and email to get started."""
 
 class Message(BaseModel):
     role: str
@@ -39,13 +39,18 @@ def home():
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        # Standard stable model identifier
+        model = genai.GenerativeModel("models/gemini-1.5-flash-latest")
         
-        # Combine prompt with context
         conversation = f"{SYSTEM_PROMPT}\n\nUser: {req.message}"
         response = model.generate_content(conversation)
         
         return {"reply": response.text.strip()}
     except Exception as e:
-        print(f"Error occurred: {str(e)}")
-        return {"reply": f"Agent error: {str(e)}"}
+        # Fallback to gemini-pro if flash-latest has permission delay
+        try:
+            fallback_model = genai.GenerativeModel("models/gemini-pro")
+            response = fallback_model.generate_content(f"{SYSTEM_PROMPT}\n\nUser: {req.message}")
+            return {"reply": response.text.strip()}
+        except Exception as err:
+            return {"reply": f"Agent error: {str(err)}"}
