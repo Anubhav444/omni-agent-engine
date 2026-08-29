@@ -29,21 +29,6 @@ class ChatRequest(BaseModel):
     history: List[Message]
     message: str
 
-def get_working_model():
-    """Auto-detect available Gemini model for this API key"""
-    try:
-        list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}"
-        res = requests.get(list_url)
-        data = res.json()
-        if "models" in data:
-            for m in data["models"]:
-                # Look for supported generateContent models
-                if "generateContent" in m.get("supportedGenerationMethods", []):
-                    return m["name"]
-    except Exception:
-        pass
-    return "models/gemini-1.5-flash"
-
 @app.get("/")
 def home():
     return {"status": "OmniAgent Engine is Active & Running"}
@@ -53,16 +38,14 @@ async def chat_endpoint(req: ChatRequest):
     if not API_KEY:
         return {"reply": "API Key is not configured on the server."}
     
-    # Auto-detected working model name
-    model_name = get_working_model()
-    
-    url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={API_KEY}"
+    # Official updated endpoint
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={API_KEY}"
     
     payload = {
         "contents": [
             {
                 "parts": [
-                    {"text": f"{SYSTEM_PROMPT}\n\nVisitor Message: {req.message}"}
+                    {"text": f"{SYSTEM_PROMPT}\n\nVisitor: {req.message}"}
                 ]
             }
         ]
