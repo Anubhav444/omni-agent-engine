@@ -1,5 +1,5 @@
 (function () {
-  const BACKEND_URL = "https://YOUR-RENDER-URL.onrender.com/chat"; // Yahan Step 4 ka URL paste karein
+  const BACKEND_URL = "https://omni-agent-engine.onrender.com/chat"; // Yahan Step 4 ka URL paste karein
 
   let chatHistory = [];
 
