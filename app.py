@@ -1,9 +1,9 @@
 import os
+import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
-import google.generativeai as genai
 
 app = FastAPI(title="OmniAgent Engine", version="1.0")
 
@@ -15,14 +15,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure API Key
 API_KEY = os.getenv("GEMINI_API_KEY")
-if API_KEY:
-    genai.configure(api_key=API_KEY)
 
-SYSTEM_PROMPT = """You are OmniAgent, the official AI representative for Sinha AI Tech Solutions.
-We provide: Custom AI Agents, Automated Recruitment Systems, and Business Process Automation.
-Goal: Answer the user politely and concisely (under 3 sentences) and ask for their name and email to get started."""
+SYSTEM_PROMPT = """You are OmniAgent, the official AI business representative for Sinha AI Tech Solutions.
+Our Core Services: Custom AI Chatbots & Agents, Automated Recruitment Systems, and Business Process Automation.
+Guidelines: Answer visitor queries professionally and concisely (under 3 sentences) and prompt them for their Name and Email/Phone to schedule a free consultation."""
 
 class Message(BaseModel):
     role: str
@@ -38,19 +35,34 @@ def home():
 
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
+    if not API_KEY:
+        return {"reply": "API Key is not configured on the server."}
+    
+    # Direct Google AI REST Endpoint for Gemini 1.5 Flash
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+    
+    payload = {
+        "system_instruction": {
+            "parts": [{"text": SYSTEM_PROMPT}]
+        },
+        "contents": [
+            {
+                "parts": [{"text": req.message}]
+            }
+        ]
+    }
+    
     try:
-        # Standard stable model identifier
-        model = genai.GenerativeModel("models/gemini-1.5-flash-latest")
+        res = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+        data = res.json()
         
-        conversation = f"{SYSTEM_PROMPT}\n\nUser: {req.message}"
-        response = model.generate_content(conversation)
-        
-        return {"reply": response.text.strip()}
+        if "candidates" in data and len(data["candidates"]) > 0:
+            bot_text = data["candidates"][0]["content"]["parts"][0]["text"]
+            return {"reply": bot_text.strip()}
+        elif "error" in data:
+            return {"reply": f"Google API Error: {data['error'].get('message', 'Unknown error')}"}
+        else:
+            return {"reply": "Could not parse AI response. Please try again."}
+            
     except Exception as e:
-        # Fallback to gemini-pro if flash-latest has permission delay
-        try:
-            fallback_model = genai.GenerativeModel("models/gemini-pro")
-            response = fallback_model.generate_content(f"{SYSTEM_PROMPT}\n\nUser: {req.message}")
-            return {"reply": response.text.strip()}
-        except Exception as err:
-            return {"reply": f"Agent error: {str(err)}"}
+        return {"reply": f"Connection error: {str(e)}"}
