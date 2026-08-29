@@ -17,9 +17,9 @@ app.add_middleware(
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 
-SYSTEM_PROMPT = """You are OmniAgent, the official AI representative for Sinha AI Tech Solutions.
-Services offered: Custom AI Agent Development, Recruitment Automation, and Enterprise Business Process Automation.
-Rules: Always answer the user's specific question directly and politely in 2-3 sentences, then ask for their Name and Email/Phone to schedule a free consultation."""
+SYSTEM_PROMPT = """You are OmniAgent, the official AI business representative for Sinha AI Tech Solutions.
+Services offered: Custom AI Agent Development, Recruitment Automation, and Enterprise Process Optimization.
+Goal: Answer visitor queries professionally and concisely in 2-3 sentences, then ask for their Name and Email/Phone to book a consultation."""
 
 class Message(BaseModel):
     role: str
@@ -29,6 +29,20 @@ class ChatRequest(BaseModel):
     history: List[Message]
     message: str
 
+def find_active_model():
+    """Fetch the exact valid model name from Google AI API"""
+    try:
+        res = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}", timeout=5)
+        data = res.json()
+        if "models" in data:
+            for m in data["models"]:
+                methods = m.get("supportedGenerationMethods", [])
+                if "generateContent" in methods:
+                    return m["name"]  # e.g., 'models/gemini-3.6-flash'
+    except Exception:
+        pass
+    return "models/gemini-3.6-flash"
+
 @app.get("/")
 def home():
     return {"status": "OmniAgent Engine is Active & Running"}
@@ -36,40 +50,38 @@ def home():
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     if not API_KEY:
-        return {"reply": "Server error: API Key is missing."}
+        return {"reply": "Server error: API Key is not configured."}
     
-    # Target models for generation
-    models_to_try = [
-        "gemini-2.5-flash",
-        "gemini-1.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro"
-    ]
+    # Get active model dynamically
+    model_path = find_active_model()
+    
+    # Clean up model path format
+    if not model_path.startswith("models/"):
+        model_path = f"models/{model_path}"
+        
+    url = f"https://generativelanguage.googleapis.com/v1beta/{model_path}:generateContent?key={API_KEY}"
     
     payload = {
-        "system_instruction": {
-            "parts": [{"text": SYSTEM_PROMPT}]
-        },
         "contents": [
             {
-                "parts": [{"text": req.message}]
+                "parts": [
+                    {"text": f"{SYSTEM_PROMPT}\n\nUser Question: {req.message}"}
+                ]
             }
         ]
     }
     
-    last_err = ""
-    for model in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={API_KEY}"
-        try:
-            res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=12)
-            data = res.json()
+    try:
+        res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
+        data = res.json()
+        
+        if res.status_code == 200 and "candidates" in data and len(data["candidates"]) > 0:
+            reply_text = data["candidates"][0]["content"]["parts"][0]["text"]
+            return {"reply": reply_text.strip()}
+        elif "error" in data:
+            return {"reply": f"API Notice: {data['error'].get('message', 'Processing error')}"}
+        else:
+            return {"reply": "Hello! How can I assist you with Sinha AI Tech Solutions today?"}
             
-            if res.status_code == 200 and "candidates" in data and len(data["candidates"]) > 0:
-                return {"reply": data["candidates"][0]["content"]["parts"][0]["text"].strip()}
-            elif "error" in data:
-                last_err = data["error"].get("message", "API error")
-        except Exception as e:
-            last_err = str(e)
-            continue
-
-    return {"reply": f"AI Engine Connection Note: {last_err}"}
+    except Exception as e:
+        return {"reply": f"Connection Error: {str(e)}"}
