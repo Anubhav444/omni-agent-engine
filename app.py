@@ -18,8 +18,8 @@ app.add_middleware(
 API_KEY = os.getenv("GEMINI_API_KEY")
 
 SYSTEM_PROMPT = """You are OmniAgent, the official AI business representative for Sinha AI Tech Solutions.
-Services offered: Custom AI Agent Development, Recruitment Automation, and Enterprise Process Optimization.
-Goal: Answer visitor queries professionally and concisely in 2-3 sentences, then ask for their Name and Email/Phone to book a consultation."""
+Our Services: Custom AI Chatbots & Agents, Automated Recruitment Systems, and Business Process Automation.
+Goal: Answer visitor questions concisely and politely in 2-3 sentences, then ask for their Name and Email to book a consultation."""
 
 class Message(BaseModel):
     role: str
@@ -29,20 +29,6 @@ class ChatRequest(BaseModel):
     history: List[Message]
     message: str
 
-def find_active_model():
-    """Fetch the exact valid model name from Google AI API"""
-    try:
-        res = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}", timeout=5)
-        data = res.json()
-        if "models" in data:
-            for m in data["models"]:
-                methods = m.get("supportedGenerationMethods", [])
-                if "generateContent" in methods:
-                    return m["name"]  # e.g., 'models/gemini-3.6-flash'
-    except Exception:
-        pass
-    return "models/gemini-3.6-flash"
-
 @app.get("/")
 def home():
     return {"status": "OmniAgent Engine is Active & Running"}
@@ -50,38 +36,32 @@ def home():
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     if not API_KEY:
-        return {"reply": "Server error: API Key is not configured."}
+        return {"reply": "API Key is missing on the server."}
     
-    # Get active model dynamically
-    model_path = find_active_model()
-    
-    # Clean up model path format
-    if not model_path.startswith("models/"):
-        model_path = f"models/{model_path}"
-        
-    url = f"https://generativelanguage.googleapis.com/v1beta/{model_path}:generateContent?key={API_KEY}"
+    # Priority list of models to try
+    models = ["gemini-3.6-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
     
     payload = {
         "contents": [
             {
                 "parts": [
-                    {"text": f"{SYSTEM_PROMPT}\n\nUser Question: {req.message}"}
+                    {"text": f"{SYSTEM_PROMPT}\n\nVisitor Message: {req.message}"}
                 ]
             }
         ]
     }
     
-    try:
-        res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
-        data = res.json()
-        
-        if res.status_code == 200 and "candidates" in data and len(data["candidates"]) > 0:
-            reply_text = data["candidates"][0]["content"]["parts"][0]["text"]
-            return {"reply": reply_text.strip()}
-        elif "error" in data:
-            return {"reply": f"API Notice: {data['error'].get('message', 'Processing error')}"}
-        else:
-            return {"reply": "Hello! How can I assist you with Sinha AI Tech Solutions today?"}
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={API_KEY}"
+        try:
+            res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=12)
+            data = res.json()
             
-    except Exception as e:
-        return {"reply": f"Connection Error: {str(e)}"}
+            # Check if successful response received
+            if res.status_code == 200 and "candidates" in data and len(data["candidates"]) > 0:
+                bot_reply = data["candidates"][0]["content"]["parts"][0]["text"]
+                return {"reply": bot_reply.strip()}
+        except Exception:
+            continue
+            
+    return {"reply": "Hello! We provide AI Agents and Business Automation solutions at Sinha AI Tech Solutions. How can we assist your business today?"}
