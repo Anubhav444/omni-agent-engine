@@ -111,4 +111,4 @@ async def chat_endpoint(req: ChatRequest):
         except Exception:
             continue
             
-    return {"reply": "Got it! How else can I assist you?"}
+    return {"reply": "Thank you"}
