@@ -5,8 +5,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
-from google import genai
-from google.genai import types
 
 app = FastAPI(title="OmniAgent Engine", version="1.0")
 
@@ -23,16 +21,15 @@ API_KEY = os.getenv("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = "8628786968:AAFgEBxwqwdh6SD-qtdzMtTXlMJr65ZA7X0"
 TELEGRAM_CHAT_ID = "5989832945"
 
-SYSTEM_PROMPT = """You are OmniAgent, the professional AI business representative for Sinha AI Tech Solutions.
-Services Offered:
-- Custom AI Chatbots & Voice Agents
-- Automated AI Recruitment & Candidate Screening Systems
-- Business Process Automation & Workflow Integration
+# Optimized System Prompt for dynamic, engaging conversations
+SYSTEM_PROMPT = """You are OmniAgent, the engaging and intelligent AI business consultant for Sinha AI Tech Solutions.
+Services Offered: Custom AI Chatbots, Automated Recruitment Systems, and Business Process Automation.
 
 Instructions:
-1. Converse naturally, concisely (1-3 sentences), and smartly.
-2. Directly answer user questions about our services.
-3. Guide high-intent prospects to share their Email or Phone number to schedule a discovery call."""
+1. Converse naturally like a consultant, avoiding repetitive or robotic phrases.
+2. Maintain strong conversation context from the chat history.
+3. If the user gives short responses (e.g., 'ok', 'thank you', 'yes', 'hello'), respond naturally to keep the dialogue moving.
+4. Keep responses concise (1-2 sentences). Guide high-intent prospects to share Email or Phone number."""
 
 class Message(BaseModel):
     role: str
@@ -47,12 +44,23 @@ def check_and_send_lead_alert(user_text: str, chat_history: List[Message]):
         return
     email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
     phone_pattern = r'(\+?[0-9]{1,3}[-.\s]?)?(\(?\d{3,4}\)?[-.\s]?)?\d{3}[-.\s]?\d{4,6}'
+    
+    # Send lead if Email or Phone number detected
     if re.search(email_pattern, user_text) or re.search(phone_pattern, user_text):
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+            # Include recent chat history for context in Telegram alert
+            context_summary = "\n".join([f"• {m.role}: {m.content}" for m in chat_history[-3:]])
+            
+            alert_msg = (
+                f"🚀 *New Lead Captured! (Sinha AI Tech Solutions)*\n\n"
+                f"👤 *Latest Message:* {user_text}\n\n"
+                f"💬 *Recent Context:*\n{context_summary}"
+            )
+            
             payload = {
                 "chat_id": TELEGRAM_CHAT_ID,
-                "text": f"🚀 *New Lead Captured! (Sinha AI Tech Solutions)*\n\n👤 *Message:* {user_text}",
+                "text": alert_msg,
                 "parse_mode": "Markdown"
             }
             requests.post(url, json=payload, timeout=5)
@@ -61,48 +69,56 @@ def check_and_send_lead_alert(user_text: str, chat_history: List[Message]):
 
 @app.get("/")
 def home():
-    return {"status": "OmniAgent Engine is Live"}
+    return {"status": "OmniAgent Engine is Online"}
 
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     if not API_KEY:
-        return {"reply": "Error: GEMINI_API_KEY is missing on server."}
+        return {"reply": "Server Error: API Key is missing."}
     
     check_and_send_lead_alert(req.message, req.history)
     
-    # Priority list of models to try if 429 occurs
-    models_to_try = [
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-3.6-flash"
-    ]
+    # Official Gemini v1beta REST API structure with System Instructions
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY}"
+    
+    formatted_contents = []
+    # Add System Prompt as 'systemInstruction'
+    formatted_contents.append({
+        "role": "user",
+        "parts": [{"text": f"System Context: {SYSTEM_PROMPT}"}]
+    })
+    
+    # Add conversation history
+    for item in req.history[-6:]:
+        role = "user" if item.role == "user" else "model"
+        formatted_contents.append({
+            "role": role,
+            "parts": [{"text": item.content}]
+        })
+        
+    # Add current user message
+    formatted_contents.append({
+        "role": "user",
+        "parts": [{"text": req.message}]
+    })
+    
+    payload = {
+        "contents": formatted_contents
+    }
+    
+    headers = {"Content-Type": "application/json"}
     
     try:
-        client = genai.Client(api_key=API_KEY)
+        response = requests.post(url, json=payload, headers=headers, timeout=12)
+        data = response.json()
         
-        contents = []
-        for item in req.history[-6:]:
-            role = "user" if item.role == "user" else "model"
-            contents.append(types.Content(role=role, parts=[types.Part.from_text(text=item.content)]))
-        
-        contents.append(types.Content(role="user", parts=[types.Part.from_text(text=req.message)]))
-        
-        for model_name in models_to_try:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_PROMPT,
-                        temperature=0.7
-                    )
-                )
-                if response and response.text:
-                    return {"reply": response.text.strip()}
-            except Exception:
-                continue
-                
+        # Extract reply from stable v1beta response structure
+        if response.status_code == 200 and "candidates" in data and len(data["candidates"]) > 0:
+            bot_reply = data["candidates"][0]["content"]["parts"][0]["text"]
+            return {"reply": bot_reply.strip()}
+            
     except Exception as e:
-        return {"reply": f"API Error: {str(e)}"}
+        print("API Error:", e)
         
-    return {"reply": "Hello! We build Custom AI Agents and Automation workflows. How can we help your business today?"}
+    # Smart default fallback that continues conversation naturally
+    return {"reply": "Got it. What aspect of our AI solutions are you interested in exploring next?"}
