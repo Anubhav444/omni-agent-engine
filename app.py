@@ -25,9 +25,9 @@ TELEGRAM_CHAT_ID = "5989832945"
 
 SYSTEM_PROMPT = """You are OmniAgent, the professional AI business representative for Sinha AI Tech Solutions.
 Services Offered:
-- Custom AI Chatbots & Agents
-- Automated AI Recruitment Systems
-- Business Process Automation
+- Custom AI Chatbots & Voice Agents
+- Automated AI Recruitment & Candidate Screening Systems
+- Business Process Automation & Workflow Integration
 
 Instructions:
 1. Converse naturally, concisely (1-3 sentences), and smartly.
@@ -70,6 +70,13 @@ async def chat_endpoint(req: ChatRequest):
     
     check_and_send_lead_alert(req.message, req.history)
     
+    # Priority list of models to try if 429 occurs
+    models_to_try = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-3.6-flash"
+    ]
+    
     try:
         client = genai.Client(api_key=API_KEY)
         
@@ -80,19 +87,22 @@ async def chat_endpoint(req: ChatRequest):
         
         contents.append(types.Content(role="user", parts=[types.Part.from_text(text=req.message)]))
         
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.7
-            )
-        )
-        
-        if response and response.text:
-            return {"reply": response.text.strip()}
-            
+        for model_name in models_to_try:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        temperature=0.7
+                    )
+                )
+                if response and response.text:
+                    return {"reply": response.text.strip()}
+            except Exception:
+                continue
+                
     except Exception as e:
         return {"reply": f"API Error: {str(e)}"}
         
-    return {"reply": "Hello! How can I assist you with our AI services today?"}
+    return {"reply": "Hello! We build Custom AI Agents and Automation workflows. How can we help your business today?"}
