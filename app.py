@@ -18,6 +18,7 @@ app.add_middleware(
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 
+# Embedded Telegram Credentials
 TELEGRAM_BOT_TOKEN = "8628786968:AAFgEBxwqwdh6SD-qtdzMtTXlMJr65ZA7X0"
 TELEGRAM_CHAT_ID = "5989832945"
 
@@ -25,8 +26,8 @@ SYSTEM_PROMPT = """You are OmniAgent, the intelligent AI business representative
 Services: Custom AI Chatbots & Agents, Automated Recruitment Systems, and Business Process Automation.
 Behavior Instructions:
 1. Have an engaging, natural, human-like conversation. Remember what the user said previously.
-2. If the user says simple greetings or short words like 'ok', 'yes', 'hello', respond naturally to continue the conversation without being robotic.
-3. Keep responses concise (1-3 sentences max)."""
+2. If the user shares details, acknowledges something, or says short words like 'ok', 'yes', 'cool', respond naturally to continue the discussion without repeating your whole sales pitch.
+3. Keep responses concise (1-3 sentences)."""
 
 class Message(BaseModel):
     role: str
@@ -41,6 +42,7 @@ def check_and_send_lead_alert(user_text: str, chat_history: List[Message]):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
 
+    # Regex patterns for email and phone numbers (7 to 15 digits)
     email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
     phone_pattern = r'(\+?[0-9]{1,3}[-.\s]?)?(\(?\d{3,4}\)?[-.\s]?)?\d{3}[-.\s]?\d{4,6}'
 
@@ -77,34 +79,25 @@ async def chat_endpoint(req: ChatRequest):
     if not API_KEY:
         return {"reply": "API Key is missing on the server."}
     
-    # Check for lead contact information
+    # Trigger instant lead detection & notification
     check_and_send_lead_alert(req.message, req.history)
     
-    # Build clean conversation history
-    formatted_contents = []
+    # Construct conversational context
+    formatted_contents = [
+        {"parts": [{"text": f"System Context: {SYSTEM_PROMPT}"}]}
+    ]
     
-    # Add recent history (last 6 exchanges)
     for item in req.history[-6:]:
         role = "user" if item.role == "user" else "model"
-        formatted_contents.append({
-            "role": role,
-            "parts": [{"text": item.content}]
-        })
+        formatted_contents.append({"parts": [{"text": f"{role}: {item.content}"}]})
     
-    # Add current user message
-    formatted_contents.append({
-        "role": "user",
-        "parts": [{"text": req.message}]
-    })
+    formatted_contents.append({"parts": [{"text": f"user: {req.message}"}]})
 
     payload = {
-        "systemInstruction": {
-            "parts": [{"text": SYSTEM_PROMPT}]
-        },
         "contents": formatted_contents
     }
     
-    models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    models = ["gemini-3.6-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
     
     for model in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={API_KEY}"
@@ -118,4 +111,4 @@ async def chat_endpoint(req: ChatRequest):
         except Exception:
             continue
             
-    return {"reply": "I'm right here! How can I help you with our AI solutions today?"}
+    return {"reply": "Got it! How else can I assist you?"}
