@@ -24,8 +24,15 @@ TELEGRAM_BOT_TOKEN = "8628786968:AAFgEBxwqwdh6SD-qtdzMtTXlMJr65ZA7X0"
 TELEGRAM_CHAT_ID = "5989832945"
 
 SYSTEM_PROMPT = """You are OmniAgent, the professional AI business representative for Sinha AI Tech Solutions.
-Services: Custom AI Chatbots, Automated Recruitment Systems, and Business Process Automation.
-Instructions: Speak naturally, keep answers under 2 sentences, and help users with inquiries."""
+Services Offered:
+- Custom AI Chatbots & Agents
+- Automated AI Recruitment Systems
+- Business Process Automation
+
+Instructions:
+1. Converse naturally, concisely (1-3 sentences), and smartly.
+2. Directly answer user questions about our services.
+3. Guide high-intent prospects to share their Email or Phone number to schedule a discovery call."""
 
 class Message(BaseModel):
     role: str
@@ -45,7 +52,7 @@ def check_and_send_lead_alert(user_text: str, chat_history: List[Message]):
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
             payload = {
                 "chat_id": TELEGRAM_CHAT_ID,
-                "text": f"🚀 *New Lead Captured!*\n\nMessage: {user_text}",
+                "text": f"🚀 *New Lead Captured! (Sinha AI Tech Solutions)*\n\n👤 *Message:* {user_text}",
                 "parse_mode": "Markdown"
             }
             requests.post(url, json=payload, timeout=5)
@@ -59,7 +66,7 @@ def home():
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     if not API_KEY:
-        return {"reply": "Error: GEMINI_API_KEY is missing on Render environment variables."}
+        return {"reply": "Error: GEMINI_API_KEY is missing on server."}
     
     check_and_send_lead_alert(req.message, req.history)
     
@@ -73,9 +80,8 @@ async def chat_endpoint(req: ChatRequest):
         
         contents.append(types.Content(role="user", parts=[types.Part.from_text(text=req.message)]))
         
-        # Using stable gemini-2.5-flash model
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash",
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
@@ -87,7 +93,6 @@ async def chat_endpoint(req: ChatRequest):
             return {"reply": response.text.strip()}
             
     except Exception as e:
-        # Return exact error message to chat window for debugging
         return {"reply": f"API Error: {str(e)}"}
         
-    return {"reply": "Hello! Welcome to Sinha AI Tech Solutions. How can I help you?"}
+    return {"reply": "Hello! How can I assist you with our AI services today?"}
