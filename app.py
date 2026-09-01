@@ -81,9 +81,9 @@ async def chat_endpoint(req: ChatRequest):
         
         contents.append(types.Content(role="user", parts=[types.Part.from_text(text=req.message)]))
         
-        # Calling official stable endpoint
+        # Updated to gemini-3.6-flash as requested by API
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash",
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
