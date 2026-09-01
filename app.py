@@ -23,16 +23,16 @@ API_KEY = os.getenv("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = "8628786968:AAFgEBxwqwdh6SD-qtdzMtTXlMJr65ZA7X0"
 TELEGRAM_CHAT_ID = "5989832945"
 
-SYSTEM_PROMPT = """You are OmniAgent, the smart AI consultant representing Sinha AI Tech Solutions.
+SYSTEM_PROMPT = """You are OmniAgent, the smart AI voice and chat consultant for Sinha AI Tech Solutions.
 Services Offered:
 - Custom Business Website Development & AI Chatbot Integration
-- Automated Recruitment & Screening Systems
-- Business Workflow Automation
+- Automated AI Recruitment & Candidate Screening Systems
+- Business Workflow & Voice Automation
 
 Instructions:
 1. Always reply in the same language the user uses (Hindi, English, or Hinglish).
-2. Answer naturally and conversationally in 1-2 sentences.
-3. Help users with their requests (like website design, AI integration) and ask for their Email or Phone number to arrange a discovery call."""
+2. Answer naturally and concisely in 1-2 spoken sentences.
+3. Help users with service details, pricing questions, and ask for their Email or Phone number to schedule a discovery call."""
 
 class Message(BaseModel):
     role: str
@@ -51,9 +51,15 @@ def check_and_send_lead_alert(user_text: str, chat_history: List[Message]):
     if re.search(email_pattern, user_text) or re.search(phone_pattern, user_text):
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+            context_summary = "\n".join([f"• {m.role}: {m.content}" for m in chat_history[-3:]])
+            alert_msg = (
+                f"🚀 *New Lead Captured! (Sinha AI Tech Solutions)*\n\n"
+                f"👤 *Latest Message:* {user_text}\n\n"
+                f"💬 *Recent Chat:*\n{context_summary}"
+            )
             payload = {
                 "chat_id": TELEGRAM_CHAT_ID,
-                "text": f"🚀 *New Lead Captured! (Sinha AI Tech Solutions)*\n\n👤 *Message:* {user_text}",
+                "text": alert_msg,
                 "parse_mode": "Markdown"
             }
             requests.post(url, json=payload, timeout=5)
@@ -67,34 +73,41 @@ def home():
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     if not API_KEY:
-        return {"reply": "Server Error: API Key missing."}
+        return {"reply": "Server Error: GEMINI_API_KEY missing."}
     
     check_and_send_lead_alert(req.message, req.history)
     
-    try:
-        client = genai.Client(api_key=API_KEY)
-        
-        contents = []
-        for item in req.history[-6:]:
-            role = "user" if item.role == "user" else "model"
-            contents.append(types.Content(role=role, parts=[types.Part.from_text(text=item.content)]))
-        
-        contents.append(types.Content(role="user", parts=[types.Part.from_text(text=req.message)]))
-        
-        # Updated to gemini-3.6-flash as requested by API
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.7
+    client = genai.Client(api_key=API_KEY)
+    
+    contents = []
+    for item in req.history[-6:]:
+        role = "user" if item.role == "user" else "model"
+        contents.append(types.Content(role=role, parts=[types.Part.from_text(text=item.content)]))
+    
+    contents.append(types.Content(role="user", parts=[types.Part.from_text(text=req.message)]))
+    
+    # Priority failover chain to handle 503 / 429
+    models_to_try = [
+        "gemini-2.5-flash",
+        "gemini-3.6-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash"
+    ]
+    
+    for model_name in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    temperature=0.7
+                )
             )
-        )
-        
-        if response and response.text:
-            return {"reply": response.text.strip()}
+            if response and response.text:
+                return {"reply": response.text.strip()}
+        except Exception:
+            continue
             
-    except Exception as e:
-        return {"reply": f"Live Engine Error: {str(e)}"}
-        
-    return {"reply": "Hum aapke business ke liye high-converting website aur AI solutions develop karte hain. Aap kis type ki website chahte hain?"}
+    return {"reply": "Namaste! Sinha AI Tech Solutions me aapka swagat hai. Hum aapke business ke liye AI Chatbots, Voice Agents aur Custom Websites banate hain. Aapko kis service ki details chahiye?"}
+    
